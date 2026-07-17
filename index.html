@@ -1,66 +1,599 @@
-// Menampilkan halaman web utama Senn Store
-function doGet(e) {
-  return HtmlService.createTemplateFromFile('Index')
-    .evaluate()
-    .setTitle('Senn Store - Order Otomatis')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
-}
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
+    <!-- Google Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+      body { 
+        font-family: 'Poppins', sans-serif;
+        padding-bottom: 85px; 
+        background-color: #f4f6f9; 
+      }
+      .navbar {
+        background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%) !important;
+      }
+      .product-card {
+        border: none;
+        border-radius: 16px;
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+        overflow: hidden;
+      }
+      .product-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 20px rgba(0,0,0,0.1) !important;
+      }
+      .product-card img { 
+        height: 160px; 
+        object-fit: cover; 
+      }
+      .bottom-nav { 
+        position: fixed; 
+        bottom: 0; 
+        left: 0; 
+        right: 0; 
+        height: 65px; 
+        background: #ffffff; 
+        box-shadow: 0 -4px 15px rgba(0,0,0,0.08); 
+        z-index: 1000; 
+        border-radius: 20px 20px 0 0;
+        display: flex;
+        justify-content: space-around;
+        align-items: center;
+      }
+      .nav-item-custom { 
+        text-align: center; 
+        color: #8e9bb0; 
+        text-decoration: none; 
+        font-size: 11px; 
+        transition: all 0.2s ease;
+        flex: 1;
+        padding: 5px 0;
+        cursor: pointer;
+      }
+      .nav-item-custom.active { 
+        color: #0d6efd; 
+        font-weight: 600; 
+      }
+      .nav-item-custom i { 
+        font-size: 22px; 
+        display: block; 
+        margin-bottom: 2px;
+      }
+      .page { 
+        display: none; 
+      }
+      .page.active { 
+        display: block; 
+        animation: fadeIn 0.3s ease-in-out;
+      }
+      
+      @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(5px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      
+      @keyframes bounceCart {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.4); }
+      }
+      .badge-bounce {
+        animation: bounceCart 0.4s ease-in-out;
+      }
+      
+      .custom-toast {
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%) translateY(-100px);
+        background-color: #198754;
+        color: white;
+        padding: 12px 24px;
+        border-radius: 50px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        z-index: 1050;
+        transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .custom-toast.show {
+        transform: translateX(-50%) translateY(0);
+      }
+      .payment-box {
+        background-color: #fff3cd;
+        border: 1px solid #ffeeba;
+        color: #856404;
+        border-radius: 12px;
+      }
+    </style>
+  </head>
+  <body>
 
-// Ambil data dari Google Sheets
-function getSheetData(sheetName) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
-  if (!sheet) return [];
-  const data = sheet.getDataRange().getValues();
-  const headers = data[0];
-  const rows = data.slice(1);
+    <!-- Toast Popup -->
+    <div id="toast" class="custom-toast">
+      <i class="bi bi-check-circle-fill"></i> Berhasil ditambahkan!
+    </div>
+
+    <!-- Header -->
+    <nav class="navbar navbar-dark sticky-top shadow">
+      <div class="container-fluid px-3 d-flex justify-content-between align-items-center">
+        <span class="navbar-brand mb-0 h1 fw-bold"><i class="bi bi-shop me-2"></i>Senn Store</span>
+        <span id="user-display" class="badge bg-light text-primary py-2 px-3 rounded-pill fw-semibold">Belum Login (Guest)</span>
+      </div>
+    </nav>
+
+    <div class="container mt-4">
+      
+  <!-- 1. HALAMAN KATALOG -->
+      <div id="page-katalog" class="page active">
+        <h5 class="fw-bold mb-3 text-secondary">Katalog Unggulan</h5>
+        <div id="product-list" class="row row-cols-2 row-cols-md-4 g-3">
+          <div class="col-12 text-center py-5">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p class="mt-2 text-muted">Memuat katalog...</p>
+          </div>
+        </div>
+      </div> <!-- <<< INI PENUTUP HALAMAN KATALOG YANG BENAR -->
+
+      <!-- 2. HALAMAN KERANJANG -->
+      <div id="page-keranjang" class="page">
+        <h5 class="fw-bold mb-3 text-secondary">Keranjang Belanja</h5>
+        
+        <!-- Input Form Data Pengiriman (Guest) -->
+        <div id="guest-checkout-form" class="card border-0 p-3 shadow-sm rounded-4 mb-3">
+          <h6 class="fw-bold text-dark mb-2 small"><i class="bi bi-pencil-square me-1"></i> Data Pemesan:</h6>
+          <div class="row g-2">
+            <div class="col-6"><input type="text" id="guest-nama" class="form-control form-control-sm" placeholder="Nama Lengkap"></div>
+            <div class="col-6"><input type="number" id="guest-hp" class="form-control form-control-sm" placeholder="No. WhatsApp"></div>
+          </div>
+        </div>
+
+        <!-- PILIHAN METODE PEMBAYARAN -->
+        <div class="card border-0 p-3 shadow-sm rounded-4 mb-3">
+          <h6 class="fw-bold text-dark mb-2 small"><i class="bi bi-wallet2 me-1"></i> Pilih Metode Pembayaran:</h6>
+          <select id="payment-method" class="form-select form-select-sm mb-2" onchange="updatePaymentInfo()">
+            <option value="QRIS">QRIS DANA (Otomatis Muncul QR)</option>
+            <option value="DANA">E-Wallet DANA (08551176805 a/n Kiki pratama)</option>
+            <option value="SHOPEEPAY">E-Wallet SHOPEEPAY (08551176805 a/n Kiki pratama)</option>
+          </select>
+          
+          <div id="payment-info" class="p-2 small text-center payment-box fw-bold mb-2">
+            Silakan pilih metode pembayaran di bawah ini untuk melakukan pembayaran.
+          </div>
+          
+          <!-- Tempat Gambar QRIS -->
+          <div id="qris-container" class="text-center p-2 bg-white rounded-3 shadow-sm d-none">
+            <img id="qris-image" src="https://cdn.phototourl.com/free/2026-07-17-552f8943-f45c-4b82-b75b-5997cfffdf9d.jpg" alt="QRIS Senn Store" class="img-fluid" style="max-height: 250px;">
+          </div>
+        </div>
+
+        <!-- LIST ITEM BELANJA & TOMBOL CHECKOUT -->
+        <div class="card border-0 p-4 shadow-sm rounded-4 mb-3">
+          <div id="cart-list"></div>
+          <hr class="text-muted">
+          <div class="d-flex justify-content-between align-items-center">
+            <h6 class="m-0 text-secondary">Total:</h6>
+            <h5 id="cart-total" class="fw-bold text-primary m-0">Rp 0</h5>
+          </div>
+          <button class="btn btn-success btn-lg w-100 mt-4 rounded-3 fw-semibold shadow-sm" onclick="prosesCheckout()">
+            <i class="bi bi-whatsapp me-2"></i>Konfirmasi Bayar ke WA
+          </button>
+        </div>
+      </div> <!-- <<< INI PENUTUP HALAMAN KERANJANG YANG BENAR -->
+
+      <!-- 3. HALAMAN LOGIN & DAFTAR -->
+      <div id="page-login" class="page">
+        <div class="row justify-content-center">
+          <div class="col-md-5">
+            <div class="card border-0 p-4 shadow-sm rounded-4 text-center" id="login-box">
+              <i class="bi bi-person-circle text-primary display-1 mb-3"></i>
+              <h4 class="fw-bold mb-4">Masuk Akun</h4>
+              <div class="form-floating mb-3">
+                <input type="text" id="login-user" class="form-control rounded-3" placeholder="Username">
+                <label for="login-user">Username</label>
+              </div>
+              <div class="form-floating mb-3">
+                <input type="password" id="login-pass" class="form-control rounded-3" placeholder="Password">
+                <label for="login-pass">Password</label>
+              </div>
+              <button class="btn btn-primary btn-lg w-100 rounded-3 fw-bold mb-3" onclick="prosesLogin()">Masuk</button>
+              <p class="small text-muted">Belum punya akun? <a href="#" onclick="tampilFormDaftar(true)">Daftar Sekarang</a></p>
+            </div>
+
+            <div class="card border-0 p-4 shadow-sm rounded-4 text-center d-none" id="register-box">
+              <i class="bi bi-person-plus-fill text-success display-1 mb-3"></i>
+              <h4 class="fw-bold mb-4">Daftar Akun Baru</h4>
+              <div class="form-floating mb-2"><input type="text" id="reg-nama" class="form-control rounded-3" placeholder="Nama"><label>Nama Lengkap</label></div>
+              <div class="form-floating mb-2"><input type="text" id="reg-user" class="form-control rounded-3" placeholder="Username"><label>Username Baru</label></div>
+              <div class="form-floating mb-2"><input type="password" id="reg-pass" class="form-control rounded-3" placeholder="Password"><label>Password</label></div>
+              <div class="form-floating mb-3"><input type="number" id="reg-hp" class="form-control rounded-3" placeholder="No HP"><label>No. WhatsApp</label></div>
+              <button class="btn btn-success btn-lg w-100 rounded-3 fw-bold mb-3" onclick="prosesDaftar()">Buat Akun Baru</button>
+              <p class="small text-muted">Sudah punya akun? <a href="#" onclick="tampilFormDaftar(false)">Masuk di sini</a></p>
+            </div>
+            
+            <div class="card border-0 p-4 shadow-sm rounded-4 text-center d-none" id="profile-box">
+              <i class="bi bi-shield-check text-success display-2 mb-2"></i>
+              <h4 class="fw-bold mb-1" id="profile-name">User</h4>
+              <p class="text-muted" id="profile-role">Customer</p>
+              <button class="btn btn-outline-danger w-100 rounded-3 mt-4" onclick="prosesLogout()">Keluar Akun</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. HALAMAN ADMIN -->
+      <div id="page-admin" class="page">
+        <h5 class="fw-bold mb-3 text-secondary">Dashboard Admin</h5>
+        <div class="card border-0 p-4 shadow-sm rounded-4 mb-4">
+          <h6 class="fw-bold mb-3 text-primary">Tambah Produk Baru</h6>
+          <div class="row g-3">
+            <div class="col-md-6 form-floating"><input type="text" id="p-nama" class="form-control" placeholder="Nama"><label class="ms-2">Nama Produk</label></div>
+            <div class="col-md-6 form-floating"><input type="number" id="p-harga" class="form-control" placeholder="Harga"><label class="ms-2">Harga (Rp)</label></div>
+            <div class="col-md-12 form-floating"><input type="text" id="p-desc" class="form-control" placeholder="Deskripsi"><label class="ms-2">Deskripsi Produk</label></div>
+            <div class="col-md-6 form-floating"><input type="number" id="p-stok" class="form-control" placeholder="Stok"><label class="ms-2">Jumlah Stok</label></div>
+            <div class="col-md-6 form-floating"><input type="text" id="p-img" class="form-control" placeholder="Gambar"><label class="ms-2">Link Foto Produk</label></div>
+            <div class="col-12"><button class="btn btn-primary btn-lg w-100 rounded-3" onclick="prosesTambahProduk()">Simpan</button></div>
+          </div>
+        </div>
+       <h6 class="fw-bold mb-3 text-secondary">Manajemen Stok</h6>
+        <ul id="admin-product-list" class="list-group shadow-sm rounded-4 mb-4"></ul>
+
+        <!-- TAMBAHAN FITUR BARU: MONITORING PESANAN & KIRIM AKUN -->
+        <h6 class="fw-bold mb-3 text-danger"><i class="bi bi-cart-check-fill me-1"></i> Kelola Pesanan Masuk</h6>
+        <div class="card border-0 p-3 shadow-sm rounded-4">
+          <div class="table-responsive">
+            <table class="table table-sm text-center align-middle small" style="font-size: 11px;">
+              <thead>
+                <tr class="table-dark">
+                  <th>ID / User</th>
+                  <th>Total</th>
+                  <th>Status</th>
+                  <th>Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="admin-order-list">
+                <!-- Data di-render otomatis -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      
+
+      <!-- 5. PUSAT BANTUAN -->
+      <div id="page-bantuan" class="page">
+        <h5 class="fw-bold mb-3 text-secondary">Pusat Bantuan</h5>
+        <div class="accordion shadow-sm rounded-4 overflow-hidden" id="faqAccordion">
+          <div class="accordion-item border-0">
+            <h2 class="accordion-header"><button class="accordion-button fw-semibold" type="button" data-bs-toggle="collapse" data-bs-target="#faq1">Bagaimana alur pembayaran?</button></h2>
+            <div id="faq1" class="accordion-collapse collapse show" data-bs-parent="#faqAccordion"><div class="accordion-body text-muted">Pilih produk, masuk ke keranjang, pilih bank/e-wallet tujuan transfer, lakukan pembayaran, lalu tekan tombol "Konfirmasi Bayar ke WA" untuk mengirimkan detail struk transaksi ke admin.</div></div>
+          </div>
+        </div>
+        <div class="card border-0 mt-4 p-4 rounded-4 bg-light text-center">
+          <a href="https://wa.me/628551176805" target="_blank" class="btn btn-success rounded-3"><i class="bi bi-whatsapp me-2"></i>Hubungi Kami</a>
+        </div>
+      </div>
+      
+    </div>
+
+    <!-- Navigasi Bawah Modern -->
+    <div class="bottom-nav">
+      <div class="nav-item-custom active" id="nav-katalog" onclick="switchPage('katalog')"><i class="bi bi-grid-fill"></i>Katalog</div>
+      <div class="nav-item-custom" id="nav-keranjang" onclick="switchPage('keranjang')">
+        <i class="bi bi-bag-check-fill position-relative">
+          <span id="cart-badge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style="font-size: 10px;">0</span>
+        </i>Keranjang
+      </div>
+      <div class="nav-item-custom" id="nav-login" onclick="switchPage('login')"><i class="bi bi-person-fill"></i>Akun</div>
+      <div class="nav-item-custom d-none" id="nav-admin" onclick="switchPage('admin')"><i class="bi bi-gear-fill"></i>Admin</div>
+      <div class="nav-item-custom" id="nav-bantuan" onclick="switchPage('bantuan')"><i class="bi bi-question-circle-fill"></i>Bantuan</div>
+    </div>
+
+    <!-- Bootstrap 5 JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+      let cart = [];
+      let currentUser = null;
+
+      document.addEventListener("DOMContentLoaded", function() {
+        loadProducts();
+      });
+
+      function switchPage(pageId) {
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+        document.querySelectorAll('.nav-item-custom').forEach(n => n.classList.remove('active'));
+        
+        const targetPage = document.getElementById('page-' + pageId);
+        const targetNav = document.getElementById('nav-' + pageId);
+        
+        if(targetPage) targetPage.classList.add('active');
+        if(targetNav) targetNav.classList.add('active');
+      }
+
+     function updatePaymentInfo() {
+  const method = document.getElementById('payment-method').value;
+  const infoBox = document.getElementById('payment-info');
+  const qrisContainer = document.getElementById('qris-container');
   
-  return rows.map(row => {
-    let obj = {};
-    headers.forEach((header, index) => {
-      obj[header] = row[index];
-    });
-    return obj;
-  });
-}
-
-// Fitur Login Customer & Admin
-function loginUser(username, password) {
-  if (username === 'admin' && password === 'admin123') {
-    return { success: true, role: 'admin', name: 'Administrator', username: 'admin' };
+  if (method === 'QRIS') {
+    infoBox.innerText = "Silakan scan kode QRIS DANA di bawah ini. Pastikan nominal sesuai dengan total belanja!";
+    qrisContainer.classList.remove('d-none'); // Munculkan QRIS
+  } else {
+    qrisContainer.classList.add('d-none'); // Sembunyikan QRIS jika pilih bank lain
+    
+    if (method === 'DANA') infoBox.innerText = "Silakan transfer ke DANA: 08551176805 (a/n Kiki pratama)";
+    if (method === 'SHOPEEPAY') infoBox.innerText = "Silakan transfer ke SHOPEEPAY: 08551176805 (a/n Kiki pratama)";
   }
-  
-  const customers = getSheetData('Customer');
-  const user = customers.find(c => String(c.username).trim() === String(username).trim() && String(c.password).trim() === String(password).trim());
-  if (user) {
-    return { success: true, role: 'customer', name: user.nama, username: user.username, no_hp: user.no_hp };
-  }
-  return { success: false, message: 'Username atau Password salah!' };
 }
 
-// Fitur Tambah Produk (Admin)
-function addProduct(product) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Produk');
-  const nextId = sheet.getLastRow();
-  sheet.appendRow([nextId, product.nama, product.harga, product.deskripsi, product.gambar_url, product.stok]);
-  return { success: true };
-}
+      function tampilFormDaftar(isDaftar) {
+        if(isDaftar) {
+          document.getElementById('login-box').classList.add('d-none');
+          document.getElementById('register-box').classList.remove('d-none');
+        } else {
+          document.getElementById('login-box').classList.remove('d-none');
+          document.getElementById('register-box').classList.add('d-none');
+        }
+      }
 
-// Fitur Hapus Produk (Admin)
-function deleteProduct(id) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Produk');
-  const data = sheet.getDataRange().getValues();
-  for (let i = 1; i < data.length; i++) {
-    if (data[i][0] == id) {
-      sheet.deleteRow(i + 1);
-      return { success: true };
-    }
-  }
-  return { success: false };
-}
+      function loadProducts() {
+        // Ambil Data Produk
+        google.script.run.withSuccessHandler(function(products) {
+          let catalogHtml = '';
+          let adminHtml = '';
+          if (!products || products.length === 0) {
+            document.getElementById('product-list').innerHTML = '<div class="col-12 text-center py-5"><p class="text-muted">Katalog kosong.</p></div>';
+            return;
+          }
+          products.forEach(p => {
+            catalogHtml += `
+              <div class="col">
+                <div class="card h-100 product-card shadow-sm">
+                  <img src="${p.gambar_url || 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=500'}" class="card-img-top" alt="${p.nama}">
+                  <div class="card-body p-2 d-flex flex-column justify-content-between">
+                    <div>
+                      <h6 class="card-title text-dark fw-bold text-truncate mb-1 small">${p.nama}</h6>
+                      <p class="text-primary fw-bold mb-1 small">Rp ${Number(p.harga).toLocaleString('id-ID')}</p>
+                      <span class="badge bg-light text-secondary mb-2" style="font-size:10px;">Stok: ${p.stok}</span>
+                    </div>
+                    <button class="btn btn-primary btn-sm w-100 rounded-2 py-1" onclick="addToCart(${p.id}, '${p.nama.replace(/'/g, "\\'")}', ${p.harga})">
+                      <i class="bi bi-cart-plus me-1"></i>+ Keranjang
+                    </button>
+                  </div>
+                </div>
+              </div>`;
+              
+            adminHtml += `
+              <li class="list-group-item d-flex justify-content-between align-items-center py-2 border-0 border-bottom">
+                <div>
+                  <span class="text-dark fw-bold d-block">${p.nama}</span>
+                  <small class="text-muted">Rp ${Number(p.harga).toLocaleString('id-ID')} | Stok: ${p.stok}</small>
+                </div>
+                <button class="btn btn-danger btn-sm rounded-3" onclick="prosesHapusProduk(${p.id})">
+                  <i class="bi bi-trash"></i>
+                </button>
+              </li>`;
+          });
+          document.getElementById('product-list').innerHTML = catalogHtml;
+          document.getElementById('admin-product-list').innerHTML = adminHtml;
+        }).getSheetData('Produk');
 
-// Fitur Checkout Otomatis, Kurangi Stok, dan Kirim Notifikasi Email
-function checkoutOrder(username, cartItems, totalHarga) {
+        // AMBIL DATA PESANAN UNTUK PANEL ADMIN
+        google.script.run.withSuccessHandler(function(orders) {
+          let orderHtml = '';
+          if(orders && orders.length > 0) {
+            orders.reverse().forEach(o => { // Yang terbaru ditaruh paling atas
+              // Parsing data hp/nama tamu jika username mengandung data Guest
+              let userDisplay = o.username;
+              let btnAksi = o.status === 'Pending' ? 
+                `<button class="btn btn-success btn-xs px-2 py-1 rounded-3" style="font-size:10px;" onclick="adminKirimAkun('${o.id_pesanan}', '${o.username}')"><i class="bi bi-send-fill"></i> Kirim Akun</button>` : 
+                `<span class="text-muted">Selesai Sent</span>`;
+                
+              orderHtml += `
+                <tr>
+                  <td class="text-start"><strong>${o.id_pesanan}</strong><br><span class="text-muted">${userDisplay}</span></td>
+                  <td>Rp ${Number(o.total_harga).toLocaleString('id-ID')}</td>
+                  <td><span class="badge ${o.status === 'Pending' ? 'bg-warning text-dark' : 'bg-success'}">${o.status}</span></td>
+                  <td>${btnAksi}</td>
+                </tr>`;
+            });
+            document.getElementById('admin-order-list').innerHTML = orderHtml;
+          } else {
+            document.getElementById('admin-order-list').innerHTML = `<tr><td colspan="4" class="text-muted py-3">Belum ada pesanan masuk</td></tr>`;
+          }
+        }).getDaftarPesanan();
+      }
+
+      // FUNGSI POPUP ADMIN UNTUK INPUT AKUN DAN KIRIM VIA WA GATEWAY
+      function adminKirimAkun(orderId, username) {
+        let nomorTujuan = prompt("Masukkan nomor WhatsApp tujuan (Contoh: 08551176805):");
+        if(!nomorTujuan) return;
+        
+        let detailAkun = prompt("Masukkan Detail Akun Produk (Contoh: Email: senn@store.com / Pass: senn123):");
+        if(!detailAkun) return alert("Detail akun tidak boleh kosong!");
+        
+        // Ubah format nomor awal 08xx jadi 628xx jika pembeli salah ketik
+        if(nomorTujuan.startsWith("0")) {
+          nomorTujuan = "62" + nomorTujuan.slice(1);
+        }
+        
+        alert("Sedang memproses pengiriman akun otomatis ke WA pelanggan...");
+        
+        google.script.run.withSuccessHandler(function(res) {
+          alert(res.message);
+          loadProducts(); // Refresh list admin
+        }).kirimAkunViaFonnte(orderId, nomorTujuan, username, detailAkun);
+      }
+
+      function addToCart(id, nama, harga) {
+        let item = cart.find(c => c.id === id);
+        if (item) {
+          item.qty++;
+        } else {
+          cart.push({ id, nama, harga, qty: 1 });
+        }
+        
+        const badge = document.getElementById('cart-badge');
+        badge.classList.remove('badge-bounce');
+        void badge.offsetWidth; 
+        badge.classList.add('badge-bounce');
+        
+        const toast = document.getElementById('toast');
+        toast.classList.add('show');
+        setTimeout(() => { toast.classList.remove('show'); }, 1200);
+        
+        updateCartUI();
+      }
+
+      function updateCartUI() {
+        document.getElementById('cart-badge').innerText = cart.reduce((acc, curr) => acc + curr.qty, 0);
+        let cartHtml = '';
+        let total = 0;
+        
+        cart.forEach((item, index) => {
+          let subtotal = item.harga * item.qty;
+          total += subtotal;
+          cartHtml += `
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <div>
+                <h6 class="mb-0 fw-bold text-dark small text-truncate" style="max-width: 180px;">${item.nama}</h6>
+                <small class="text-muted">${item.qty} x Rp ${item.harga.toLocaleString('id-ID')}</small>
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <span class="fw-bold text-dark small">Rp ${subtotal.toLocaleString('id-ID')}</span>
+                <button class="btn btn-sm btn-link text-danger p-0" onclick="hapusDariCart(${index})"><i class="bi bi-x-circle-fill"></i></button>
+              </div>
+            </div>`;
+        });
+        
+        document.getElementById('cart-list').innerHTML = cartHtml || '<div class="text-center py-4 text-muted small"><i class="bi bi-bag-x display-6 mb-2 d-block"></i>Keranjang kosong</div>';
+        document.getElementById('cart-total').innerText = 'Rp ' + total.toLocaleString('id-ID');
+      }
+      
+      function hapusDariCart(index) {
+        cart.splice(index, 1);
+        updateCartUI();
+      }
+
+      function prosesLogin() {
+        let user = document.getElementById('login-user').value;
+        let pass = document.getElementById('login-pass').value;
+        
+        if (!user || !pass) return alert("Isi username & password!");
+        
+        google.script.run.withSuccessHandler(function(res) {
+          if(res.success) {
+            currentUser = res;
+            document.getElementById('user-display').innerText = `Hai, ${res.name}`;
+            document.getElementById('login-box').classList.add('d-none');
+            document.getElementById('register-box').classList.add('d-none');
+            document.getElementById('profile-box').classList.remove('d-none');
+            document.getElementById('profile-name').innerText = res.name;
+            document.getElementById('profile-role').innerText = res.role.toUpperCase();
+            
+            document.getElementById('guest-checkout-form').classList.add('d-none');
+            
+            alert(`Selamat datang, ${res.name}`);
+            
+            if(res.role === 'admin') {
+              document.getElementById('nav-admin').classList.remove('d-none');
+              switchPage('admin');
+            } else {
+              switchPage('katalog');
+            }
+          } else {
+            alert(res.message);
+          }
+        }).loginUser(user, pass);
+      }
+
+      function prosesDaftar() {
+        let nama = document.getElementById('reg-nama').value;
+        let user = document.getElementById('reg-user').value;
+        let pass = document.getElementById('reg-pass').value;
+        let hp = document.getElementById('reg-hp').value;
+        
+        if(!nama || !user || !pass || !hp) return alert("Mohon lengkapi semua bidang!");
+        
+        google.script.run.withSuccessHandler(function(res) {
+          alert("Akun berhasil dibuat!");
+          tampilFormDaftar(false);
+          document.getElementById('login-user').value = user;
+        }).registerNewUser(nama, user, pass, hp);
+      }
+      
+      function prosesLogout() {
+        currentUser = null;
+        document.getElementById('user-display').innerText = 'Belum Login (Guest)';
+        document.getElementById('login-box').classList.remove('d-none');
+        document.getElementById('profile-box').classList.add('d-none');
+        document.getElementById('nav-admin').classList.add('d-none');
+        document.getElementById('guest-checkout-form').classList.remove('d-none');
+        document.getElementById('login-user').value = '';
+        document.getElementById('login-pass').value = '';
+        switchPage('katalog');
+      }
+
+      // KUSTOMISASI PROSES CHECKOUT WHATSAPP DENGAN KONFIRMASI PEMBAYARAN
+      function prosesCheckout() {
+        if (cart.length === 0) return alert("Keranjang belanja kosong!");
+        
+        let orderName = "Guest";
+        let orderHp = "-";
+        
+        if (!currentUser) {
+          orderName = document.getElementById('guest-nama').value;
+          orderHp = document.getElementById('guest-hp').value;
+          if(!orderName || !orderHp) return alert("Silakan isi Nama dan No. WhatsApp untuk verifikasi tamu!");
+        } else {
+          orderName = currentUser.name;
+          orderHp = currentUser.no_hp || "-";
+        }
+        
+        const paymentMethod = document.getElementById('payment-method').value;
+        let total = cart.reduce((acc, curr) => acc + (curr.harga * curr.qty), 0);
+        let userKey = currentUser ? currentUser.username : "Guest_" + orderName.replace(/\s+/g, '');
+
+        google.script.run.withSuccessHandler(function(res) {
+          if(res.success) {
+            let detailWA = '';
+            cart.forEach(item => {
+              detailWA += `- *${item.nama}* (${item.qty} pcs) = Rp ${(item.harga * item.qty).toLocaleString('id-ID')}\n`;
+            });
+            
+            let waText = `✅ *SENN STORE - KONFIRMASI PEMBAYARAN SO* ✅\n\n` +
+                         `*ID Pesanan:* ${res.orderId}\n` +
+                         `*Nama Pembeli:* ${orderName}\n` +
+                         `*No. WhatsApp:* ${orderHp}\n` +
+                         `*Metode Bayar:* ${paymentMethod}\n` +
+                         `------------------------------------\n` +
+                         `*Detail Produk:*\n${detailWA}` +
+                         `------------------------------------\n` +
+                         `*Total Pembayaran:* *Rp ${total.toLocaleString('id-ID')}*\n\n` +
+                         `💬 _Saya telah melakukan transfer sesuai dengan total di atas. Mohon diverifikasi & kirimkan barangnya ya Admin, Terimakasih!_`;
+            
+            let waUrl = `https://api.whatsapp.com/send?phone=628551176805&text=${encodeURIComponent(waText)}`;
+            window.open(waUrl, '_blank');
+            
+            cart = [];
+            if(!currentUser) {
+              document.getElementById('guest-nama').value = '';
+              document.getElementById('guest-hp').value = '';
+            }
+            updateCartUI();
+            switchPage('katalog');
+          }
+        }).checkoutOrder(userKey, cart, total);
+      }
+
+      function checkoutOrder(username, cartItems, totalHarga) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const pesananSheet = ss.getSheetByName('Pesanan');
   const produkSheet = ss.getSheetByName('Produk');
@@ -73,20 +606,26 @@ function checkoutOrder(username, cartItems, totalHarga) {
   pesananSheet.appendRow([orderId, tanggal, username, detail, totalHarga, 'Pending']);
   
   // 2. Potong Stok di sheet Produk otomatis
-  const produkData = produkSheet.getDataRange().getValues();
-  cartItems.forEach(item => {
-    for (let i = 1; i < produkData.length; i++) {
-      if (produkData[i][0] == item.id) {
-        const stokLama = Number(produkData[i][5]);
-        const stokBaru = Math.max(0, stokLama - item.qty);
-        produkSheet.getRange(i + 1, 6).setValue(stokBaru); // Update kolom stok (kolom F / 6)
-      }
-    }
-  });
-
-  // 3. Kirim Email Notifikasi Otomatis ke Email Admin
   try {
-    const adminEmail = Session.getEffectiveUser().getEmail(); // Otomatis terkirim ke email pemilik sheet/GAS ini
+    const produkData = produkSheet.getDataRange().getValues();
+    cartItems.forEach(item => {
+      for (let i = 1; i < produkData.length; i++) {
+        if (produkData[i][0] == item.id) {
+          const stokLama = Number(produkData[i][5]);
+          const stokBaru = Math.max(0, stokLama - item.qty);
+          produkSheet.getRange(i + 1, 6).setValue(stokBaru);
+        }
+      }
+    });
+  } catch(e) {
+    Logger.log("Gagal potong stok: " + e.toString());
+  }
+
+  // 3. PERBAIKAN SISTEM NOTIFIKASI EMAIL (Jauh lebih aman & pasti masuk)
+  try {
+    // ⚠️ MASUKKAN EMAIL ANDA MANUAL DI SINI AGAR TIDAK ERRONEOUS
+    const adminEmail = "senhora311@gmail.com"; 
+    
     const tanggalFormat = Utilities.formatDate(tanggal, "GMT+7", "dd-MM-yyyy HH:mm");
     
     let detailEmailTeks = "";
@@ -104,9 +643,11 @@ function checkoutOrder(username, cartItems, totalHarga) {
                      `Daftar Belanja:\n${detailEmailTeks}\n` +
                      `-----------------------------------\n` +
                      `Total Bayar: Rp ${Number(totalHarga).toLocaleString('id-ID')}\n\n` +
-                     `Sistem telah memotong stok produk secara otomatis di Google Sheets Anda. Silakan hubungi customer jika belum melakukan pembayaran via WhatsApp.`;
+                     `Sistem telah memotong stok produk secara otomatis di Google Sheets. Silakan cek WhatsApp untuk melihat konfirmasi transfer dari customer.`;
                      
-    MailApp.sendEmail(adminEmail, subjek, isiEmail);
+    // Menggunakan GmailApp (lebih agresif menembus inbox dibanding MailApp)
+    GmailApp.sendEmail(adminEmail, subjek, isiEmail);
+    Logger.log("Email berhasil dikirim ke: " + adminEmail);
   } catch (error) {
     Logger.log("Gagal mengirim email: " + error.toString());
   }
@@ -114,173 +655,35 @@ function checkoutOrder(username, cartItems, totalHarga) {
   return { success: true, orderId: orderId };
 }
 
-// Membuat struktur database awal agar tidak perlu repot isi manual
-function buatStrukturSheetOtomatis() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const struktur = [
-    {
-      namaSheet: "Produk",
-      kolom: ["id", "nama", "harga", "deskripsi", "gambar_url", "stok"],
-      contohData: [
-        [1, "Jersey Senn Store Spec", 150000, "Jersey olahraga premium senn store bahan dry-fit nyaman dipakai sehari-hari.", "https://images.unsplash.com/photo-1541167760496-1628856ab772?q=80&w=500", 99],
-        [2, "Senn Hoodie Black", 299000, "Hoodie tebal katun premium dengan sablon awet anti pecah.", "https://images.unsplash.com/photo-1600891964599-f61ba0e24092?q=80&w=500", 50]
-      ]
-    },
-    {
-      namaSheet: "Customer",
-      kolom: ["id", "username", "password", "nama", "no_hp"],
-      contohData: [
-        [1, "user1", "password123", "Budi Santoso", "08123456789"],
-        [2, "user2", "pass456", "Siti Aminah", "08571234567"]
-      ]
-    },
-    {
-      namaSheet: "Pesanan",
-      kolom: ["id_pesanan", "tanggal", "username", "detail_produk", "total_harga", "status"],
-      contohData: []
-    }
-  ];
-
-  struktur.forEach(item => {
-    let sheet = ss.getSheetByName(item.namaSheet);
-    if (!sheet) {
-      sheet = ss.insertSheet(item.namaSheet);
-    } else {
-      sheet.clear();
-    }
-    sheet.getRange(1, 1, 1, item.kolom.length).setValues([item.kolom]);
-    sheet.getRange(1, 1, 1, item.kolom.length)
-         .setBackground("#0d6efd")
-         .setFontColor("#FFFFFF")
-         .setFontWeight("bold")
-         .setHorizontalAlignment("center");
-         
-    if (item.contohData.length > 0) {
-      sheet.getRange(2, 1, item.contohData.length, item.kolom.length).setValues(item.contohData);
-    }
-    sheet.autoResizeColumns(1, item.kolom.length);
-  });
-  
-  const sheet1 = ss.getSheetByName("Sheet1");
-  if (sheet1 && ss.getSheets().length > 3) {
-    ss.deleteSheet(sheet1);
-  }
-}
-
-// Fungsi Baru: Akan kita pasang untuk memeriksa sheet otomatis setiap 1 menit
-function cekDanKirimEmailPesanan() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName('Pesanan');
-  const lastRow = sheet.getLastRow();
-  
-  // Jika sheet kosong atau hanya ada header, hentikan proses
-  if (lastRow <= 1) return;
-  
-  // 1. TULIS EMAIL GMAIL ANDA DI SINI
-  const emailToko = "senhora311@gmail.com"; 
-  
-  // 2. Ambil data baris paling terakhir (pesanan paling baru)
-  const orderId = sheet.getRange(lastRow, 1).getValue();
-  const tanggal = sheet.getRange(lastRow, 2).getValue();
-  const username = sheet.getRange(lastRow, 3).getValue();
-  const detailProdukRaw = sheet.getRange(lastRow, 4).getValue();
-  const totalHarga = sheet.getRange(lastRow, 5).getValue();
-  const status = sheet.getRange(lastRow, 6).getValue();
-  
-  // Validasi: Cek apakah ID order ini sudah pernah dikirim emailnya atau belum
-  const properti = PropertiesService.getScriptProperties();
-  const lastSentId = properti.getProperty('LAST_SENT_ORDER_ID');
-  if (lastSentId === String(orderId)) {
-    return; // Jika ID sama dengan pesanan sebelumnya, hentikan (agar tidak spam email ganda)
-  }
-  
-  // Format Tanggal
-  const tanggalFormat = Utilities.formatDate(new Date(tanggal), "GMT+7", "dd-MM-yyyy HH:mm");
-  
-  // Urai Detail Produk Belanjaan
-  let detailTeks = "";
-  try {
-    const items = JSON.parse(detailProdukRaw);
-    items.forEach(item => {
-      detailTeks += `• ${item.nama} (${item.qty}x) - Rp ${(item.harga * item.qty).toLocaleString('id-ID')}\n`;
-    });
-  } catch(err) {
-    detailTeks = detailProdukRaw;
-  }
-
-  // Format Konten Isi Email Notifikasi
-  const subjek = `🚨 [SENN STORE] MASUK ORDERAN BARU - ${orderId}`;
-  const isiEmail = `Halo Owner Senn Store,\n\n` +
-                   `Sistem mendeteksi ada transaksi baru yang masuk ke Google Sheets!\n\n` +
-                   `ID Pesanan : ${orderId}\n` +
-                   `Waktu      : ${tanggalFormat}\n` +
-                   `Pelanggan  : ${username}\n` +
-                   `-----------------------------------\n` +
-                   `Daftar Belanja:\n${detailTeks}\n` +
-                   `-----------------------------------\n` +
-                   `Total Bayar: Rp ${Number(totalHarga).toLocaleString('id-ID')}\n` +
-                   `Status Awal: ${status}\n\n` +
-                   `Silakan periksa WhatsApp Admin Anda untuk melihat bukti transfer/QRIS yang dikirimkan oleh pelanggan.`;
-
-  // Kirim email dari server Google Anda
-  GmailApp.sendEmail(emailToko, subjek, isiEmail);
-  
-  // Kunci ID ini agar tidak terkirim dua kali pada menit berikutnya
-  properti.setProperty('LAST_SENT_ORDER_ID', String(orderId));
-}
-
-
-// FUNGSI UNTUK MENGIRIM PESAN WA OTOMATIS VIA FONNTE
-function kirimAkunViaFonnte(orderId, noHp, namaPelanggan, detailAkun) {
-  // ⚠️ GANTI DENGAN TOKEN FONNTE ANDA SENDIRI
-  const fonnteToken = "BDUjyYLQTYmcoDxPJX7Z"; 
-  
-  const pesan = `Halo *${namaPelanggan}*,\n\n` +
-                `Terima kasih telah berbelanja di *Senn Store* dan melakukan pembayaran. Otorisasi pesanan Anda dengan *ID: ${orderId}* telah sukses diverifikasi! ✅\n\n` +
-                `Berikut adalah detail akun produk digital Anda:\n` +
-                `----------------------------------------\n` +
-                `${detailAkun}\n` +
-                `----------------------------------------\n\n` +
-                `Jika ada kendala, silakan hubungi Pusat Bantuan kami kembali ya. Selamat menikmati! 🙏`;
-
-  const url = "https://api.fonnte.com/send";
-  const payload = {
-    "target": String(noHp),
-    "message": pesan
-  };
-  
-  const options = {
-    "method": "post",
-    "headers": {
-      "Authorization": fonnteToken
-    },
-    "payload": payload,
-    "muteHttpExceptions": true
-  };
-  
-  try {
-    const response = UrlFetchApp.fetch(url, options);
-    const resText = response.getContentText();
-    Logger.log("Respon Fonnte: " + resText);
-    
-    // Jika sukses terkirim, ubah status di Google Sheets jadi 'Selesai'
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const sheet = ss.getSheetByName('Pesanan');
-    const data = sheet.getDataRange().getValues();
-    for (let i = 1; i < data.length; i++) {
-      if (data[i][0] == orderId) {
-        sheet.getRange(i + 1, 6).setValue('Selesai'); // Kolom F (Status) jadi Selesai
-        sheet.getRange(i + 1, 7).setValue(detailAkun); // Kolom G (Keterangan Akun) diisi data akun
-        break;
+      function prosesTambahProduk() {
+        let p = {
+          nama: document.getElementById('p-nama').value,
+          harga: Number(document.getElementById('p-harga').value),
+          deskripsi: document.getElementById('p-desc').value,
+          stok: Number(document.getElementById('p-stok').value),
+          gambar_url: document.getElementById('p-img').value
+        };
+        
+        if (!p.nama || !p.harga) return alert("Nama dan harga wajib diisi!");
+        
+        google.script.run.withSuccessHandler(function() {
+          alert("Produk berhasil ditambahkan!");
+          loadProducts();
+          document.getElementById('p-nama').value = '';
+          document.getElementById('p-harga').value = '';
+          document.getElementById('p-desc').value = '';
+          document.getElementById('p-stok').value = '';
+          document.getElementById('p-img').value = '';
+        }).addProduct(p);
       }
-    }
-    return { success: true, message: "Akun berhasil dikirim langsung ke WA pelanggan!" };
-  } catch(e) {
-    return { success: false, message: "Gagal kirim WA Gateway: " + e.toString() };
-  }
-}
 
-// Tambahan fungsi untuk Admin mengambil data list Pesanan
-function getDaftarPesanan() {
-  return getSheetData('Pesanan');
-}
+      function prosesHapusProduk(id) {
+        if(confirm("Hapus produk ini?")) {
+          google.script.run.withSuccessHandler(function() {
+            loadProducts();
+          }).deleteProduct(id);
+        }
+      }
+    </script>
+  </body>
+</html>
